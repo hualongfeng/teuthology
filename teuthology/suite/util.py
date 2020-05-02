@@ -202,6 +202,8 @@ def git_validate_sha1(project, sha1, project_owner='ceph'):
 
     if '/github.com/' in url:
         url = '/'.join((url, 'commit', sha1))
+    elif '/10.239.241.166/' in url:
+        url = '/'.join((url, 'commit', sha1))
     elif '/git.ceph.com/' in url:
         # kinda specific to knowing git.ceph.com is gitweb
         url = ('http://git.ceph.com/?p=%s.git;a=blob_plain;f=.gitignore;hb=%s'

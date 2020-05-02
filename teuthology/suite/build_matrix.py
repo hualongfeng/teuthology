@@ -105,6 +105,7 @@ def _build_matrix(path, mincyclicity=0, item=''):
                     submats.append(submat)
             return matrix.Concat(item, submats)
         elif path.endswith('$') or '$' in files:
+            files = [f for f in files if 'rhel' not in f and 'centos' not in f]
             # pick a random item -- make sure we don't pick any magic files
             if '$' in files:
                 files.remove('$')

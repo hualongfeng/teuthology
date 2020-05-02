@@ -808,7 +808,7 @@ class GitbuilderProject(object):
     def _install_deb_repo(self):
         self.remote.run(
             args=[
-                'echo', 'deb', self.base_url, self.codename, 'main',
+                'echo', 'deb [arch=amd64 trusted=yes]', self.base_url, self.codename, 'main',
                 Raw('|'),
                 'sudo', 'tee',
                 '/etc/apt/sources.list.d/{proj}.list'.format(
