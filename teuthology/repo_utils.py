@@ -52,7 +52,8 @@ def build_git_url(project, project_owner='ceph'):
     elif project == 'ceph':
         base = config.get_ceph_git_url()
     else:
-        base = 'https://github.com/{project_owner}/{project}'
+        base = 'http://10.239.241.166/{project_owner}/{project}'
+#        base = 'https://github.com/{project_owner}/{project}'
     url_templ = re.sub('\.git$', '', base)
     return url_templ.format(project_owner=project_owner, project=project)
 

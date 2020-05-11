@@ -79,8 +79,10 @@ def main(ctx):
     result_proc = None
 
     if teuth_config.teuthology_path is None:
-        fetch_teuthology('master')
-    fetch_qa_suite('master')
+        log.info("fhl======>Don't fetch teuthology")
+        #fetch_teuthology('master')
+    #fetch_qa_suite('master')
+    log.info("fhl======>Don't fetch qa/suite")
 
     keep_running = True
     while keep_running:
@@ -152,8 +154,10 @@ def prep_job(job_config, log_file_path, archive_dir):
     try:
         if teuth_config.teuthology_path is not None:
             teuth_path = teuth_config.teuthology_path
+            log.info('dehao ===>>> In teuthology.yaml file, teuthology_path is [%s]. Do not need to fetch teuthology code from web....', teuth_config.teuthology_path)
         else:
             teuth_path = fetch_teuthology(branch=teuthology_branch)
+            log.info('dehao ===>>> In teuthology.yaml file, teuthology_path is None. Need to fetch teuthology code from web')
         # For the teuthology tasks, we look for suite_branch, and if we
         # don't get that, we look for branch, and fall back to 'master'.
         # last-in-suite jobs don't have suite_branch or branch set.
@@ -189,6 +193,9 @@ def prep_job(job_config, log_file_path, archive_dir):
 
 
 def run_job(job_config, teuth_bin_path, archive_dir, verbose):
+    cmd = "/home/teuthworker/cleanup_slave_nodes.sh " + job_config['archive_path']
+    os.system(cmd)
+
     safe_archive = safepath.munge(job_config['name'])
     if job_config.get('first_in_suite') or job_config.get('last_in_suite'):
         if teuth_config.results_server:
@@ -285,8 +292,11 @@ def run_job(job_config, teuth_bin_path, archive_dir, verbose):
 
         if p.returncode != 0:
             log.error('Child exited with code %d', p.returncode)
+            cmd = "/home/teuthworker/cleanup_slave_nodes_tail.sh " + job_config['archive_path']
+            os.system(cmd)
         else:
             log.info('Success!')
+
 
 
 def run_with_watchdog(process, job_config):
