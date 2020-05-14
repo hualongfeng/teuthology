@@ -168,6 +168,10 @@ def connect(ctx, config):
     """
     log.info('Opening connections...')
     for rem in ctx.cluster.remotes.keys():
+        log.info('fenghl cleanup slave node on %s', rem.name)
+        editinfo = os.path.join(os.path.dirname(__file__), 'all_clean.sh')
+        p1 = subprocess.Popen(["bash", editinfo, rem.name])
+        p1.wait(600)
         log.debug('connecting to %s', rem.name)
         rem.connect()
 

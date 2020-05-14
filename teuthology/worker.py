@@ -193,9 +193,6 @@ def prep_job(job_config, log_file_path, archive_dir):
 
 
 def run_job(job_config, teuth_bin_path, archive_dir, verbose):
-    cmd = "/home/teuthworker/cleanup_slave_nodes.sh " + job_config['archive_path']
-    os.system(cmd)
-
     safe_archive = safepath.munge(job_config['name'])
     if job_config.get('first_in_suite') or job_config.get('last_in_suite'):
         if teuth_config.results_server:
@@ -292,11 +289,8 @@ def run_job(job_config, teuth_bin_path, archive_dir, verbose):
 
         if p.returncode != 0:
             log.error('Child exited with code %d', p.returncode)
-            cmd = "/home/teuthworker/cleanup_slave_nodes_tail.sh " + job_config['archive_path']
-            os.system(cmd)
         else:
             log.info('Success!')
-
 
 
 def run_with_watchdog(process, job_config):
