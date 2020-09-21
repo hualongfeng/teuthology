@@ -145,8 +145,10 @@ class TestRun(object):
     @patch('teuthology.suite.run.util.git_branch_exists')
     @patch('teuthology.suite.run.util.package_version_for_hash')
     @patch('teuthology.suite.run.util.git_ls_remote')
+    @patch('teuthology.suite.run.os.path.exists')
     def test_regression(
         self,
+        m_qa_teuthology_branch_exists,
         m_git_ls_remote,
         m_package_version_for_hash,
         m_git_branch_exists,
@@ -157,6 +159,7 @@ class TestRun(object):
         m_package_version_for_hash.return_value = 'ceph_hash'
         m_git_branch_exists.return_value = True
         m_git_ls_remote.return_value = "suite_branch"
+        m_qa_teuthology_branch_exists.return_value = False
         self.args_dict = {
             'base_yaml_paths': [],
             'ceph_branch': 'master',
@@ -250,6 +253,7 @@ class TestScheduleSuite(object):
         # schedule_jobs() is just neutered; check calls below
 
         self.args.newest = 0
+        self.args.num = 42
         runobj = self.klass(self.args)
         runobj.base_args = list()
         count = runobj.schedule_suite()
@@ -263,6 +267,8 @@ class TestScheduleSuite(object):
             yaml=yaml.safe_load('\n'.join(frags)),
             sha1='ceph_sha1',
             args=[
+                '--num',
+                '42',
                 '--description',
                 os.path.join(self.args.suite, build_matrix_desc),
                 '--',

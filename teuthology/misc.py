@@ -9,7 +9,6 @@ import configobj
 import getpass
 import socket
 import subprocess
-import sys
 import tarfile
 import time
 import yaml
@@ -29,7 +28,6 @@ from teuthology.config import config
 from teuthology.contextutil import safe_while
 from teuthology.orchestra.opsys import DEFAULT_OS_VERSION
 
-from six import (reraise, ensure_str)
 
 log = logging.getLogger(__name__)
 
@@ -523,14 +521,7 @@ def write_file(remote, path, data):
     :param path: Path on the remote being written to.
     :param data: Data to be written.
     """
-    remote.run(
-        args=[
-            'cat',
-            run.Raw('>'),
-            path,
-        ],
-        stdin=data,
-    )
+    remote.write_file(path, data)
 
 
 def sudo_write_file(remote, path, data, perms=None, owner=None):
@@ -545,21 +536,7 @@ def sudo_write_file(remote, path, data, perms=None, owner=None):
 
     Both perms and owner are passed directly to chmod.
     """
-    permargs = []
-    if perms:
-        permargs = [run.Raw('&&'), 'sudo', 'chmod', perms, path]
-    owner_args = []
-    if owner:
-        owner_args = [run.Raw('&&'), 'sudo', 'chown', owner, path]
-    remote.run(
-        args=[
-            'sudo',
-            'sh',
-            '-c',
-            'cat > ' + path,
-        ] + owner_args + permargs,
-        stdin=data,
-    )
+    remote.sudo_write_file(path, data, mode=perms, owner=owner)
 
 
 def copy_file(from_remote, from_path, to_remote, to_path=None):
@@ -647,7 +624,7 @@ def remove_lines_from_file(remote, path, line_is_valid_test,
     on when the main site goes up and down.
     """
     # read in the specified file
-    in_data = ensure_str(get_file(remote, path, False))
+    in_data = remote.read_file(path, False).decode()
     out_data = ""
 
     first_line = True
@@ -679,22 +656,8 @@ def remove_lines_from_file(remote, path, line_is_valid_test,
 def append_lines_to_file(remote, path, lines, sudo=False):
     """
     Append lines to a file.
-    An intermediate file is used in the same manner as in
-    Remove_lines_from_list.
     """
-
-    temp_file_path = remote.mktemp()
-
-    data = ensure_str(get_file(remote, path, sudo))
-
-    # add the additional data and write it back out, using a temp file
-    # in case of connectivity of loss, and then mv it to the
-    # actual desired location
-    data += lines
-    write_file(remote, temp_file_path, data)
-
-    # then do a 'mv' to the actual file location
-    move_file(remote, temp_file_path, path, sudo)
+    remote.write_file(path, lines, append=True, sudo=sudo)
 
 def prepend_lines_to_file(remote, path, lines, sudo=False):
     """
@@ -704,17 +667,9 @@ def prepend_lines_to_file(remote, path, lines, sudo=False):
     """
 
     temp_file_path = remote.mktemp()
-
-    data = ensure_str(get_file(remote, path, sudo))
-
-    # add the additional data and write it back out, using a temp file
-    # in case of connectivity of loss, and then mv it to the
-    # actual desired location
-    data = lines + data
-    write_file(remote, temp_file_path, data)
-
-    # then do a 'mv' to the actual file location
-    move_file(remote, temp_file_path, path, sudo)
+    remote.write_file(temp_file_path, lines)
+    remote.copy_file(path, temp_file_path, append=True, sudo=sudo)
+    remote.move_file(temp_file_path, path, sudo=sudo)
 
 
 def create_file(remote, path, data="", permissions=str(644), sudo=False):
@@ -810,7 +765,7 @@ def get_scratch_devices(remote):
     """
     devs = []
     try:
-        file_data = ensure_str(get_file(remote, "/scratch_devs"))
+        file_data = remote.read_file("/scratch_devs").decode()
         devs = file_data.split()
     except Exception:
         devs = remote.sh('ls /dev/[sv]d?').strip().split('\n')
@@ -1063,7 +1018,7 @@ def get_valgrind_args(testdir, name, preamble, v):
         'env', 'OPENSSL_ia32cap=~0x1000000000000000',
     ])
 
-    val_path = '/var/log/ceph/valgrind'.format(tdir=testdir)
+    val_path = '/var/log/ceph/valgrind'
     if '--tool=memcheck' in v or '--tool=helgrind' in v:
         extra_args = [
             'valgrind',
@@ -1075,6 +1030,9 @@ def get_valgrind_args(testdir, name, preamble, v):
             '--xml-file={vdir}/{n}.log'.format(vdir=val_path, n=name),
             '--time-stamp=yes',
             '--vgdb=yes',
+            # at least Valgrind 3.14 is required
+            '--exit-on-first-error=yes',
+            '--error-exitcode=42',
         ]
     else:
         extra_args = [
@@ -1085,6 +1043,8 @@ def get_valgrind_args(testdir, name, preamble, v):
             '--log-file={vdir}/{n}.log'.format(vdir=val_path, n=name),
             '--time-stamp=yes',
             '--vgdb=yes',
+            '--exit-on-first-error=yes',
+            '--error-exitcode=42',
         ]
     args = [
         'cd', testdir,
@@ -1143,12 +1103,13 @@ def _ssh_keyscan(hostname):
         stderr=subprocess.PIPE,
     )
     p.wait()
-    for line in p.stderr.readlines():
-        line = ensure_str(line.strip())
+    for line in p.stderr:
+        line = line.decode()
+        line = line.strip()
         if line and not line.startswith('#'):
             log.error(line)
-    for line in p.stdout.readlines():
-        host, key = ensure_str(line.strip()).split(' ', 1)
+    for line in p.stdout:
+        host, key = line.strip().decode().split(' ', 1)
         return key
 
 
@@ -1174,17 +1135,17 @@ def stop_daemons_of_type(ctx, type_, cluster='ceph'):
     :param type_: type of daemons to be stopped.
     """
     log.info('Shutting down %s daemons...' % type_)
-    exc_info = (None, None, None)
+    exc = None
     for daemon in ctx.daemons.iter_daemons_of_role(type_, cluster):
         try:
             daemon.stop()
         except (CommandFailedError,
                 CommandCrashedError,
-                ConnectionLostError):
-            exc_info = sys.exc_info()
+                ConnectionLostError) as e:
+            exc = e
             log.exception('Saw exception from %s.%s', daemon.role, daemon.id_)
-    if exc_info != (None, None, None):
-        reraise(*exc_info)
+    if exc is not None:
+        raise exc
 
 
 def get_system_type(remote, distro=False, version=False):
@@ -1317,8 +1278,8 @@ def sh(command, log_limit=1024, cwd=None, env=None):
     lines = []
     truncated = False
     with proc.stdout:
-        for line in iter(proc.stdout.readline, b''):
-            line = ensure_str(line)
+        for line in proc.stdout:
+            line = line.decode()
             lines.append(line)
             line = line.strip()
             if len(line) > log_limit:

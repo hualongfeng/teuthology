@@ -6,8 +6,6 @@ import socket
 from mock import MagicMock, patch
 from pytest import raises
 
-from six import ensure_str, ensure_binary
-
 from teuthology.orchestra import run
 from teuthology.exceptions import (CommandCrashedError, CommandFailedError,
                                    ConnectionLostError)
@@ -19,7 +17,7 @@ def set_buffer_contents(buf, contents):
     elif isinstance(contents, (list, tuple)):
         buf.writelines(contents)
     elif isinstance(contents, str):
-        buf.write(ensure_binary(contents))
+        buf.write(contents.encode())
     else:
         raise TypeError(
             "%s is a %s; should be a byte string, list or tuple" % (
@@ -109,8 +107,8 @@ class TestRun(object):
             stdout=stdout,
         )
         assert proc.stdout is stdout
-        assert ensure_str(proc.stdout.read()) == output
-        assert ensure_str(proc.stdout.getvalue()) == output
+        assert proc.stdout.read().decode() == output
+        assert proc.stdout.getvalue().decode() == output
 
     def test_capture_stderr_newline(self):
         output = 'foo\nbar\n'
@@ -123,8 +121,8 @@ class TestRun(object):
             stderr=stderr,
         )
         assert proc.stderr is stderr
-        assert ensure_str(proc.stderr.read()) == output
-        assert ensure_str(proc.stderr.getvalue()) == output
+        assert proc.stderr.read().decode() == output
+        assert proc.stderr.getvalue().decode() == output
 
     def test_status_bad(self):
         self.m_stdout_buf.channel.recv_exit_status.return_value = 42
@@ -259,6 +257,11 @@ class TestRun(object):
         code = proc.wait()
         assert code == 0
         assert proc.exitstatus == 0
+
+    def test_copy_and_close(self):
+        run.copy_and_close(None, MagicMock())
+        run.copy_and_close('', MagicMock())
+        run.copy_and_close(b'', MagicMock())
 
 
 class TestQuote(object):

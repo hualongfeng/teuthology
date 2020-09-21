@@ -5,7 +5,6 @@ import requests
 import smtplib
 import socket
 import subprocess
-import six
 import sys
 
 from email.mime.text import MIMEText
@@ -21,6 +20,7 @@ from teuthology.repo_utils import fetch_qa_suite, fetch_teuthology
 from teuthology.orchestra.opsys import OS
 from teuthology.packaging import get_builder_project
 from teuthology.repo_utils import build_git_url
+from teuthology.suite.build_matrix import combine_path
 from teuthology.task.install import get_flavor
 
 log = logging.getLogger(__name__)
@@ -140,7 +140,7 @@ def get_distro_defaults(distro, machine_type):
             os_version = '13.10'
             arch = 'armv7l'
         else:
-            os_version = '14.04'
+            os_version = '16.04'
     elif distro == 'debian':
         os_type = distro
         os_version = '7'
@@ -254,7 +254,7 @@ def get_branch_info(project, branch, project_owner='ceph'):
 
 
 def package_version_for_hash(hash, kernel_flavor='basic', distro='rhel',
-                             distro_version='7.0', machine_type='smithi'):
+                             distro_version='8.0', machine_type='smithi'):
     """
     Does what it says on the tin. Uses gitbuilder repos.
 
@@ -463,7 +463,7 @@ def find_git_parent(project, sha1):
         resp = requests.get(url)
         if not resp.ok:
             log.error('git refresh failed for %s: %s',
-                      project, six.ensure_str(resp.content))
+                      project, resp.content.decode())
 
     def get_sha1s(project, committish, count):
         url = '/'.join((base_url, '%s.git' % project,
@@ -485,3 +485,42 @@ def find_git_parent(project, sha1):
         return sha1s[1]
     else:
         return None
+
+
+def filter_configs(configs, suite_name=None,
+                            filter_in=None,
+                            filter_out=None,
+                            filter_all=None,
+                            filter_fragments=True):
+    """
+    Returns a generator for pairs of description and fragment paths.
+
+    Usage:
+
+        configs = build_matrix(path, subset, seed)
+        for description, fragments in filter_configs(configs):
+            pass
+    """
+    for item in configs:
+        fragment_paths = item[1]
+        description = combine_path(suite_name, item[0]) \
+                                        if suite_name else item[0]
+        base_frag_paths = [strip_fragment_path(x)
+                                        for x in fragment_paths]
+        def matches(f):
+            if f in description:
+                return True
+            if filter_fragments and \
+                    any(f in path for path in base_frag_paths):
+                return True
+            return False
+        if filter_all:
+            if not all(matches(f) for f in filter_all):
+                continue
+        if filter_in:
+            if not any(matches(f) for f in filter_in):
+                continue
+        if filter_out:
+            if any(matches(f) for f in filter_out):
+                continue
+        yield([description, fragment_paths])

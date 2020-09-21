@@ -25,7 +25,6 @@ def override_arg_defaults(name, default, env=os.environ):
         '--suite-repo'        : 'TEUTH_SUITE_REPO',
         '--ceph-branch'       : 'TEUTH_CEPH_BRANCH',
         '--suite-branch'      : 'TEUTH_SUITE_BRANCH',
-        '--teuthology-branch' : 'TEUTH_BRANCH',
     }
     if name in env_arg and env_arg[name] in env.keys():
         variable = env_arg[name]
@@ -65,7 +64,7 @@ def process_args(args):
         elif key == 'subset' and value is not None:
             # take input string '2/3' and turn into (2, 3)
             value = tuple(map(int, value.split('/')))
-        elif key in ('filter_in', 'filter_out', 'rerun_statuses'):
+        elif key in ('filter_all', 'filter_in', 'filter_out', 'rerun_statuses'):
             if not value:
                 value = []
             else:
@@ -78,7 +77,7 @@ def process_args(args):
             value = expand_short_repo_name(
                 value,
                 config.get_ceph_qa_suite_git_url())
-        elif key in ('validate_sha1'):
+        elif key in ('validate_sha1', 'filter_fragments'):
             value = strtobool(value)
         conf[key] = value
     return conf

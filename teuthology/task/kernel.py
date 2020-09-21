@@ -6,7 +6,7 @@ import logging
 import os
 import re
 import shlex
-from six import (ensure_str, StringIO)
+from io import StringIO
 
 from teuthology.util.compat import urljoin
 
@@ -188,10 +188,22 @@ def need_to_install(ctx, role, version):
                                                                  want=version))
 
     if '.' in str(version):
-        # version is utsrelease, yay
         if cur_version == version:
             log.debug('utsrelease strings match, do not need to install')
             ret = False
+        os_type = teuthology.get_distro(ctx)
+        log.debug("Distro of this test job: {}".format(os_type))
+        if os_type in ['sle', 'opensuse']:
+            cur_version_match = re.search('(.*)-default$', cur_version)
+            if cur_version_match:
+                cur_version_rp = cur_version_match.group(1)
+                if cur_version_rp in version:
+                    log.debug('"{}" is a substring of "{}" - the latest {} kernel is running'
+                              .format(cur_version_rp, version, os_type))
+                    ret = False
+            else:
+                log.debug('failed to parse current kernel version {} (os_type is "{}")'
+                          .format(cur_version, os_type))
     else:
         # version is sha1, need to try to extract sha1 from cur_version
         match = re.search('[-_]g([0-9a-f]{6,40})', cur_version)
@@ -845,8 +857,8 @@ def install_kernel(remote, path=None, version=None):
     if package_type == 'deb':
         newversion = get_latest_image_version_deb(remote, dist_release)
         if 'ubuntu' in dist_release:
-            grub2conf = ensure_str(teuthology.get_file(remote,
-                '/boot/grub/grub.cfg', sudo=True))
+            grub2conf = teuthology.get_file(remote,
+                '/boot/grub/grub.cfg', sudo=True).decode()
             submenu = ''
             menuentry = ''
             for line in grub2conf.split('\n'):
@@ -921,7 +933,7 @@ def grub2_kernel_select_generic(remote, newversion, ostype):
         grubconfig = '/boot/grub/grub.cfg'
         mkconfig = 'grub-mkconfig'
     remote.run(args=['sudo', mkconfig, '-o', grubconfig, ])
-    grub2conf = ensure_str(teuthology.get_file(remote, grubconfig, sudo=True))
+    grub2conf = teuthology.get_file(remote, grubconfig, sudo=True).decode()
     entry_num = 0
     if '\nmenuentry ' not in grub2conf:
         # okay, do the newer (el8) grub2 thing
@@ -952,8 +964,8 @@ def generate_legacy_grub_entry(remote, newversion):
     a kernel just via a command. This generates an entry in legacy
     grub for a new kernel version using the existing entry as a base.
     """
-    grubconf = ensure_str(teuthology.get_file(remote,
-        '/boot/grub/grub.conf', sudo=True))
+    grubconf = teuthology.get_file(remote,
+        '/boot/grub/grub.conf', sudo=True).decode()
     titleline = ''
     rootline = ''
     kernelline = ''

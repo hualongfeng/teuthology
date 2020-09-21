@@ -42,7 +42,7 @@ setup(
         'License :: OSI Approved :: MIT License',
         'Natural Language :: English',
         'Operating System :: POSIX :: Linux',
-        'Programming Language :: Python :: 2.7',
+        'Programming Language :: Python :: 3.6',
         'Topic :: Software Development :: Quality Assurance',
         'Topic :: Software Development :: Testing',
         'Topic :: System :: Distributed Computing',
@@ -68,7 +68,6 @@ setup(
                       'humanfriendly',
                       ],
     extras_require = {
-        'coverage': [ 'mysqlclient == 1.4.2'],
         'orchestra': [
             # For apache-libcloud when using python < 2.7.9
             'backports.ssl_match_hostname',
@@ -103,6 +102,7 @@ setup(
             'boto3',
             'PyJWT',            # for qa/tasks/mgr/dashboard/test_auth.py
             'ipy',              # for qa/tasks/cephfs/mount.py
+            'toml',             # for qa/tasks/cephadm.py
         ]
     },
 
@@ -127,7 +127,8 @@ setup(
             'teuthology-kill = scripts.kill:main',
             'teuthology-queue = scripts.queue:main',
             'teuthology-prune-logs = scripts.prune_logs:main',
-            'teuthology-describe-tests = scripts.describe_tests:main',
+            'teuthology-describe = scripts.describe:main',
+            'teuthology-reimage = scripts.reimage:main'
             ],
         },
 

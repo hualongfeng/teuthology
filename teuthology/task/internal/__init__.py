@@ -8,7 +8,6 @@ import logging
 import os
 import time
 import yaml
-import six
 import subprocess
 
 import teuthology.lock.ops
@@ -19,6 +18,8 @@ from teuthology.config import config as teuth_config
 from teuthology.exceptions import VersionNotFoundError
 from teuthology.job_status import get_status, set_status
 from teuthology.orchestra import cluster, remote, run
+# the below import with noqa is to workaround run.py which does not support multilevel submodule import
+from teuthology.task.internal.redhat import setup_cdn_repo, setup_base_repo, setup_additional_repo, setup_stage_cdn  # noqa
 
 log = logging.getLogger(__name__)
 
@@ -308,12 +309,12 @@ def fetch_binaries_for_coredumps(path, remote):
             dump_path = os.path.join(coredump_path, dump)
             dump_info = subprocess.Popen(['file', dump_path],
                                          stdout=subprocess.PIPE)
-            dump_out = dump_info.communicate()[0]
+            dump_out = dump_info.communicate()[0].decode()
 
             # Parse file output to get program, Example output:
             # 1422917770.7450.core: ELF 64-bit LSB core file x86-64, version 1 (SYSV), SVR4-style, \
             # from 'radosgw --rgw-socket-path /home/ubuntu/cephtest/apache/tmp.client.0/fastcgi_soc'
-            dump_program = six.ensure_str(dump_out).split("from '")[1].split(' ')[0]
+            dump_program = dump_out.split("from '")[1].split(' ')[0]
 
             # Find path on remote server:
             remote_path = remote.sh(['which', dump_program]).rstrip()

@@ -167,10 +167,16 @@ def validate_tasks(config):
 
 def get_initial_tasks(lock, config, machine_type):
     init_tasks = []
-    overrides = config.get('overrides')
-    having_repos = ('install' in config and 'repos' in config.get('install')) \
-        or (overrides and 'install' in overrides and 'repos' in overrides.get('install'))
-    if not having_repos:
+    overrides = config.get('overrides', {})
+    having_repos = ('repos' in config.get('install', {}) or
+                    'repos' in overrides.get('install', {}))
+    if 'redhat' in config:
+        pass
+    elif having_repos:
+        pass
+    elif not config.get('verify_ceph_hash', True):
+        pass
+    else:
         init_tasks += [
             {'internal.check_packages': None},
             {'internal.buildpackages_prep': None},
@@ -205,7 +211,8 @@ def get_initial_tasks(lock, config, machine_type):
             {'internal.vm_setup': None},
         ])
 
-    if 'kernel' in config:
+    # install_latest_rh_kernel is used for redhat config
+    if 'redhat' not in config and 'kernel' in config:
         init_tasks.append({'kernel': config['kernel']})
 
     if 'roles' in config:
@@ -225,6 +232,11 @@ def get_initial_tasks(lock, config, machine_type):
             {'pcp': None},
             {'selinux': None},
         ])
+
+    if 'redhat' in config:
+        init_tasks.extend([
+            {'internal.setup_stage_cdn': None}])
+
     if config.get('ceph_cm_ansible', True):
         init_tasks.append({'ansible.cephlab': None})
 
@@ -234,11 +246,14 @@ def get_initial_tasks(lock, config, machine_type):
 
     if 'redhat' in config:
         init_tasks.extend([
+            {'internal.git_ignore_ssl': None},
             {'internal.setup_cdn_repo': None},
             {'internal.setup_base_repo': None},
-            {'internal.setup_additional_repo': None},
-            {'kernel.install_latest_rh_kernel': None}
+            {'internal.setup_additional_repo': None}
         ])
+        # Install latest kernel task for redhat downstream runs
+        if config.get('redhat').get('install_latest_rh_kernel', False):
+            init_tasks.extend({'kernel.install_latest_rh_kernel': None})
  
     return init_tasks
 

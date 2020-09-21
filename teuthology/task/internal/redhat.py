@@ -4,12 +4,68 @@ Internal tasks  for redhat downstream builds
 import contextlib
 import logging
 import requests
+import yaml
+import os
 from tempfile import NamedTemporaryFile
+from teuthology.config import config as teuthconfig
 from teuthology.parallel import parallel
 from teuthology.orchestra import run
 from teuthology.task.install.redhat import set_deb_repo
+from teuthology.exceptions import CommandFailedError, ConfigError
 
 log = logging.getLogger(__name__)
+
+
+@contextlib.contextmanager
+def setup_stage_cdn(ctx, config):
+    """
+    Configure internal stage cdn
+    """
+    suite_path = ctx.config.get('suite_path')
+    if not suite_path:
+        raise ConfigError("suite_path missing")
+    teuthconfig.suite_path = suite_path
+
+    with parallel() as p:
+        for remote in ctx.cluster.remotes.keys():
+            if remote.os.name == 'rhel':
+                log.info("subscribing stage cdn on : %s", remote.shortname)
+                p.spawn(_subscribe_stage_cdn, remote)
+    try:
+        yield
+    finally:
+        with parallel() as p:
+            for remote in ctx.cluster.remotes.keys():
+                p.spawn(_unsubscribe_stage_cdn, remote)
+
+
+def _subscribe_stage_cdn(remote):
+    _unsubscribe_stage_cdn(remote)
+    cdn_config = teuthconfig.get('cdn-config', dict())
+    server_url = cdn_config.get('server-url', 'subscription.rhsm.stage.redhat.com:443/subscription')
+    base_url = cdn_config.get('base-url', 'https://cdn.stage.redhat.com')
+    username = cdn_config.get('username', 'cephuser')
+    password = cdn_config.get('password')
+    remote.run(
+        args=[
+            'sudo', 'subscription-manager', '--force', 'register',
+            run.Raw('--serverurl=' + server_url),
+            run.Raw('--baseurl=' + base_url),
+            run.Raw('--username=' + username),
+            run.Raw('--password=' + password),
+            '--auto-attach'
+            ],
+        timeout=720)
+    _enable_rhel_repos(remote)
+
+
+def _unsubscribe_stage_cdn(remote):
+    try:
+        remote.run(args=['sudo', 'subscription-manager', 'unregister'],
+                   check_status=False)
+    except CommandFailedError:
+        # FIX ME
+        log.info("unregistring subscription-manager failed, ignoring")
 
 
 @contextlib.contextmanager
@@ -41,9 +97,27 @@ def setup_additional_repo(ctx, config):
             if remote.os.package_type == 'rpm':
                 remote.run(args=['sudo', 'wget', '-O', '/etc/yum.repos.d/rh_add.repo',
                                  add_repo])
-                remote.run(args=['sudo', 'yum', 'update', 'metadata'])
+                if not remote.os.version.startswith('8'):
+                    remote.run(args=['sudo', 'yum', 'update', 'metadata'])
 
     yield
+
+
+def _enable_rhel_repos(remote):
+
+    # Look for rh specific repos in <suite_path>/rh/downstream.yaml
+    ds_yaml = os.path.join(
+        teuthconfig.suite_path,
+        'rh',
+        'downstream.yaml',
+    )
+
+    rhel_repos = yaml.safe_load(open(ds_yaml))
+    repos_to_subscribe = rhel_repos.get('rhel_repos').get(remote.os.version[0])
+
+    for repo in repos_to_subscribe:
+        remote.run(args=['sudo', 'subscription-manager',
+                         'repos', '--enable={r}'.format(r=repo)])
 
 
 @contextlib.contextmanager
@@ -83,8 +157,20 @@ def _setup_latest_repo(ctx, config):
     with parallel():
         for remote in ctx.cluster.remotes.keys():
             if remote.os.package_type == 'rpm':
-                remote.run(args=['sudo', 'subscription-manager', 'repos',
-                                 run.Raw('--disable=*ceph*')])
+                # pre-cleanup
+                remote.run(args=['sudo', 'rm', run.Raw('/etc/yum.repos.d/rh*')],
+                           check_status=False)
+                remote.run(args=['sudo', 'yum', 'clean', 'metadata'])
+                if not remote.os.version.startswith('8'):
+                    remote.run(args=['sudo', 'yum', 'update', 'metadata'])
+                # skip is required for beta iso testing
+                if config.get('skip-subscription-manager', False) is True:
+                    log.info("Skipping subscription-manager command")
+                else:
+                    remote.run(args=['sudo', 'subscription-manager', 'repos',
+                                    run.Raw('--disable=*ceph*')],
+                               check_status=False
+                               )
                 base_url = config.get('base-repo-url', '')
                 installer_url = config.get('installer-repo-url', '')
                 repos = ['MON', 'OSD', 'Tools', 'Calamari', 'Installer']
@@ -96,11 +182,12 @@ def _setup_latest_repo(ctx, config):
                 # create base repo
                 if base_url.startswith('http'):
                     repo_to_use = _get_repos_to_use(base_url, repos)
-                    base_repo_file = NamedTemporaryFile(delete=False)
+                    base_repo_file = NamedTemporaryFile(mode='w', delete=False)
                     _create_temp_repo_file(repo_to_use, base_repo_file)
                     remote.put_file(base_repo_file.name, base_repo_file.name)
                     remote.run(args=['sudo', 'cp', base_repo_file.name,
                                      '/etc/yum.repos.d/rh_ceph.repo'])
+                    remote.run(args=['sudo', 'yum', 'clean', 'metadata'])
                 if installer_url.startswith('http'):
                     irepo_to_use = _get_repos_to_use(
                         installer_url, installer_repos)
@@ -109,6 +196,9 @@ def _setup_latest_repo(ctx, config):
                     remote.put_file(installer_file.name, installer_file.name)
                     remote.run(args=['sudo', 'cp', installer_file.name,
                                      '/etc/yum.repos.d/rh_inst.repo'])
+                    remote.run(args=['sudo', 'yum', 'clean', 'metadata'])
+                    if not remote.os.version.startswith('8'):
+                        remote.run(args=['sudo', 'yum', 'update', 'metadata'])
             else:
                 if config.get('deb-repo-url'):
                     deb_repo = config.get('deb-repo-url')

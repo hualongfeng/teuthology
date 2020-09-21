@@ -61,10 +61,10 @@ DISTRO_CODENAME_MAP = {
 DEFAULT_OS_VERSION = dict(
     ubuntu="18.04",
     fedora="25",
-    centos="7.6",
+    centos="8.1",
     opensuse="15.0",
     sle="15.0",
-    rhel="7.6",
+    rhel="8.1",
     debian='8.0'
 )
 
@@ -163,6 +163,8 @@ class OS(object):
         if name == 'sles':
             name = 'sle'
         elif name == 'opensuse-leap':
+            name = 'opensuse'
+        elif name == 'opensuse-tumbleweed':
             name = 'opensuse'
         version = cls._get_value(str_, 'VERSION_ID')
         obj = cls(name=name, version=version)

@@ -8,7 +8,6 @@ import tempfile
 import logging
 import getpass
 
-from six import ensure_str
 
 from teuthology import beanstalk
 from teuthology import report
@@ -73,7 +72,10 @@ def kill_job(run_name, job_id, archive_base=None, owner=None):
                 "Please pass --owner <owner>.")
         owner = job_info['owner']
     kill_processes(run_name, [job_info.get('pid')])
-    targets = dict(targets=job_info.get('targets', {}))
+    # Because targets can be missing for some cases, for example, when all
+    # the necessary nodes ain't locked yet, we do not use job_info to get them,
+    # but use find_targets():
+    targets = find_targets(run_name, owner, job_id)
     nuke_targets(targets, owner)
 
 
@@ -192,12 +194,12 @@ def find_pids(run_name):
     return run_pids
 
 
-def find_targets(run_name, owner):
+def find_targets(run_name, owner, job_id=None):
     lock_args = [
         'teuthology-lock',
         '--list-targets',
         '--desc-pattern',
-        '/' + run_name + '/',
+        '/' + run_name + '/' + str(job_id or ''),
         '--status',
         'up',
         '--owner',
@@ -240,9 +242,9 @@ def nuke_targets(targets_dict, owner):
         nuke_args,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT)
-    for line in iter(proc.stdout.readline, b''):
+    for line in proc.stdout:
         line = line.replace(b'\r', b'').replace(b'\n', b'')
-        log.info(ensure_str(line))
+        log.info(line.decode())
         sys.stdout.flush()
 
     os.unlink(target_file.name)
