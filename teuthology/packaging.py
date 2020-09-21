@@ -785,25 +785,32 @@ class GitbuilderProject(object):
             self._install_deb_repo()
 
     def _install_rpm_repo(self):
-        dist_release = self.dist_release
-        project = self.project
-        proj_release = \
-            '{proj}-release-{release}.{dist_release}.noarch'.format(
-                proj=project, release=self.rpm_release,
-                dist_release=dist_release
-            )
-        rpm_name = "{rpm_nm}.rpm".format(rpm_nm=proj_release)
-        url = "{base_url}/noarch/{rpm_name}".format(
-            base_url=self.base_url, rpm_name=rpm_name)
-        if dist_release in ['opensuse', 'sle']:
-            url = "{base_url}/{arch}".format(
-                base_url=self.base_url, arch=self.arch)
-            self.remote.run(args=[
-                'sudo', 'zypper', '-n', 'addrepo', '--refresh', '--no-gpgcheck',
-                '-p', '1', url, 'ceph-rpm-under-test',
-            ])
-        else:
-            self.remote.run(args=['sudo', 'yum', '-y', 'install', url])
+        repo="[ceph] \n\
+name=ceph packages for $basearcha \n\
+baseurl={base_url}/$basearch \n\
+enabled=1 \n\
+gpgcheck=0 \n\
+type=rpm-md \n\
+\n\
+[ceph-noarch] \n\
+name=ceph noarch packages \n\
+baseurl={base_url}/noarch \n\
+enabled=1 \n\
+gpgcheck=0 \n\
+type=rpm-md \n\
+\n\
+[ceph-source] \n\
+name=ceph source packages \n\
+baseurl={base_url}/SRPMS \n\
+enabled=1 \n\
+gpgcheck=0 \n\
+type=rpm-md".format(base_url=self.base_url)
+        log.info("Writing yum repo:\n{}".format(repo))
+        sudo_write_file(
+            self.remote,
+            '/etc/yum.repos.d/{proj}.repo'.format(proj=self.project),
+            repo,
+        )
 
     def _install_deb_repo(self):
         self.remote.run(
@@ -830,13 +837,13 @@ class GitbuilderProject(object):
             self._remove_deb_repo()
 
     def _remove_rpm_repo(self):
-        if self.dist_release in ['opensuse', 'sle']:
-            self.remote.run(args=[
-                'sudo', 'zypper', '-n', 'removerepo', 'ceph-rpm-under-test'
-            ])
-        else:
-            remove_package('%s-release' % self.project, self.remote)
-
+        self.remote.run(
+            args=[
+                'sudo',
+                'rm', '-f',
+                '/etc/yum.repos.d/{proj}.repo'.format(proj=self.project),
+            ]
+        )
     def _remove_deb_repo(self):
         self.remote.run(
             args=[
